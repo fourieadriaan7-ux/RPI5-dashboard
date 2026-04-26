@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ts
+.env
+.env.local
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+coverage
+*.tsbuildinfo
+pi-dashboard-for-brother.zip
+
+packages/shared/src/*.js

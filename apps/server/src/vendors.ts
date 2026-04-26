@@ -1,0 +1,52 @@
+const VENDOR_PREFIXES: Record<string, string> = {
+  "001A11": "Google",
+  "001B63": "Apple",
+  "002248": "Microsoft",
+  "002500": "Apple",
+  "0026BB": "Apple",
+  "0050E4": "Apple",
+  "006B9E": "Vizio",
+  "00A040": "Apple",
+  "00D09E": "Apple",
+  "18B430": "Nest",
+  "1C1AC0": "Apple",
+  "28CFDA": "Apple",
+  "2C54CF": "LG",
+  "34AB37": "Apple",
+  "3C5A37": "Samsung",
+  "3C7D0A": "Apple",
+  "40B395": "Apple",
+  "44D884": "Apple",
+  "50F5DA": "Amazon",
+  "5C497D": "Samsung",
+  "60F81D": "Apple",
+  "681729": "Intel",
+  "6C4008": "Apple",
+  "70DEE2": "Apple",
+  "7440BB": "Hon Hai",
+  "78D75F": "Apple",
+  "7C0191": "Apple",
+  "801F02": "Edimax",
+  "84FCFE": "Apple",
+  "8C8590": "Apple",
+  "90B21F": "Apple",
+  "985AEB": "Apple",
+  "9C207B": "Apple",
+  A4B197: "Apple",
+  ACBC32: "Apple",
+  B827EB: "Raspberry Pi",
+  B8E856: "Apple",
+  C8BCC8: "Apple",
+  D850E6: "ASUSTek",
+  DC3714: "Apple",
+  E45F01: "Raspberry Pi",
+  F0D1A9: "Apple",
+  F4F5D8: "Google",
+  F8FF0B: "Apple"
+};
+
+export const lookupVendor = (mac?: string): string | undefined => {
+  if (!mac) return undefined;
+  const prefix = mac.replace(/[^a-fA-F0-9]/g, "").slice(0, 6).toUpperCase();
+  return VENDOR_PREFIXES[prefix];
+};

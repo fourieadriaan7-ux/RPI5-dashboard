@@ -1,0 +1,28 @@
+{
+  "name": "pi-router-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c green,blue \"npm run dev:server\" \"npm run dev:web\"",
+    "dev:server": "PORT=18080 DATABASE_PATH=./data/pi-dashboard.sqlite npm run dev -w @pi-dashboard/server",
+    "dev:web": "npm run dev -w @pi-dashboard/web",
+    "stop": "sh -c 'for p in 5174 18080 8080; do ids=$(lsof -ti tcp:$p 2>/dev/null || true); if [ -n \"$ids\" ]; then kill $ids 2>/dev/null || true; fi; done'",
+    "build": "npm run build -w @pi-dashboard/shared && npm run build -w @pi-dashboard/server && npm run build -w @pi-dashboard/web",
+    "start": "npm run build && npm run start -w @pi-dashboard/server",
+    "test": "npm run test -ws --if-present",
+    "typecheck": "npm run build -w @pi-dashboard/shared && npm run typecheck -w @pi-dashboard/server && npm run typecheck -w @pi-dashboard/web"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  }
+}

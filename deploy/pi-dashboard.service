@@ -1,0 +1,23 @@
+[Unit]
+Description=Pi Router Dashboard
+After=network-online.target pi-dashboard-nft.service
+Wants=network-online.target pi-dashboard-nft.service
+
+[Service]
+User=pi-dashboard
+Group=pi-dashboard
+WorkingDirectory=/opt/pi-dashboard
+EnvironmentFile=/etc/pi-dashboard.env
+ExecStart=/usr/bin/node /opt/pi-dashboard/apps/server/dist/index.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+ReadWritePaths=/var/lib/pi-dashboard
+ReadOnlyPaths=/sys /proc /var/lib/misc/dnsmasq.leases
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Pi Router Dashboard nftables accounting
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/pi-dashboard.env
+ExecStart=/bin/bash /opt/pi-dashboard/deploy/install-nft-accounting.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
