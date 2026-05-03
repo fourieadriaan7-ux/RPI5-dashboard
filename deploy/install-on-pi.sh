@@ -24,7 +24,14 @@ echo "Installing OS packages..."
 apt-get update
 apt-get install -y curl git nftables acl build-essential python3
 
-if ! need_cmd node; then
+NODE_MAJOR=0
+NODE_MINOR=0
+if need_cmd node; then
+  NODE_MAJOR="$(node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || echo 0)"
+  NODE_MINOR="$(node -p "Number(process.versions.node.split('.')[1])" 2>/dev/null || echo 0)"
+fi
+
+if [[ "${NODE_MAJOR}" -lt 20 || ( "${NODE_MAJOR}" -eq 20 && "${NODE_MINOR}" -lt 19 ) ]]; then
   echo "Installing Node.js 22 LTS..."
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
