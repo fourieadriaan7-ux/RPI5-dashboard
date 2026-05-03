@@ -42,6 +42,8 @@ Extra dashboard features:
 
 ## Development
 
+Use Node `20.19.0` or newer. On Windows, run `npm install` after cloning so native packages such as `better-sqlite3` install the correct Windows binary.
+
 ```bash
 npm install
 npm run build

@@ -14,11 +14,16 @@ export const formatRate = (bytesPerSecond: number): string => `${formatBytes(byt
 
 export const formatTime = (iso?: string): string => {
   if (!iso) return "Never";
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
-  }).format(new Date(iso));
+  const elapsedMs = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(elapsedMs)) return "Never";
+  const elapsedSeconds = Math.max(0, Math.round(elapsedMs / 1000));
+  if (elapsedSeconds < 45) return "Just now";
+  const elapsedMinutes = Math.round(elapsedSeconds / 60);
+  if (elapsedMinutes < 60) return `${elapsedMinutes} min ago`;
+  const elapsedHours = Math.round(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `${elapsedHours} hour${elapsedHours === 1 ? "" : "s"} ago`;
+  const elapsedDays = Math.round(elapsedHours / 24);
+  return `${elapsedDays} day${elapsedDays === 1 ? "" : "s"} ago`;
 };
 
 export const formatDateTime = (iso?: string): string => {
