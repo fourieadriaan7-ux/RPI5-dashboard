@@ -60,6 +60,32 @@ sudo journalctl -u pi-dashboard -f
 sudo nft list table inet pi_dashboard_bw
 ```
 
+## If Devices Show But Download/Upload Stay At Zero
+
+This means device discovery is working, but the passive traffic counters are not seeing routed traffic.
+
+Run this on the Pi:
+
+```bash
+cd /opt/pi-dashboard
+sudo bash deploy/check-traffic.sh
+```
+
+While the script is sampling, open a website or run a speed test from a LAN device.
+
+If the script says the counters did not move, check these first:
+
+- `WAN_INTERFACE` and `LAN_INTERFACE` in `/etc/pi-dashboard.env` must be the real uplink and LAN interfaces.
+- LAN devices must use the Pi LAN IP as their default gateway.
+- The Pi must be routing/NATing traffic. If traffic bypasses the Pi, the dashboard can still see devices from DHCP/ARP, but it cannot count their internet usage.
+
+After changing interfaces, reinstall the nftables accounting table and restart:
+
+```bash
+sudo systemctl restart pi-dashboard-nft
+sudo systemctl restart pi-dashboard
+```
+
 ## If The Dashboard Opens But Shows No Devices
 
 Check these on the Pi:
