@@ -1,4 +1,4 @@
-import type { DashboardSnapshot, Device } from "@pi-dashboard/shared";
+import type { DashboardSnapshot, Device, DeviceIcon } from "@pi-dashboard/shared";
 
 const minutesAgo = (minutes: number): string => new Date(Date.now() - minutes * 60_000).toISOString();
 const hoursFromNow = (hours: number): string => new Date(Date.now() + hours * 60 * 60_000).toISOString();
@@ -23,7 +23,20 @@ const devices = (): Device[] => [
     rxRateBps: 480_000,
     txRateBps: 110_000,
     rxTodayBytes: gb(8.3),
-    txTodayBytes: gb(1.2)
+    txTodayBytes: gb(1.2),
+    dns: {
+      queriesToday: 328,
+      blockedToday: 41,
+      lastQueryAt: minutesAgo(1),
+      recentDomains: ["github.com", "npmjs.com", "cloudflare.com"],
+      recentQueries: [
+        { queriedAt: minutesAgo(1), domain: "github.com", type: "A", result: "allowed" },
+        { queriedAt: minutesAgo(3), domain: "api.github.com", type: "AAAA", result: "allowed" },
+        { queriedAt: minutesAgo(7), domain: "tracking.example.net", type: "A", result: "blocked" },
+        { queriedAt: minutesAgo(9), domain: "npmjs.com", type: "A", result: "allowed" },
+        { queriedAt: minutesAgo(12), domain: "cloudflare.com", type: "AAAA", result: "allowed" }
+      ]
+    }
   },
   {
     id: "living-room-tv",
@@ -43,7 +56,20 @@ const devices = (): Device[] => [
     rxRateBps: 890_000,
     txRateBps: 70_000,
     rxTodayBytes: gb(6.1),
-    txTodayBytes: gb(0.7)
+    txTodayBytes: gb(0.7),
+    dns: {
+      queriesToday: 184,
+      blockedToday: 9,
+      lastQueryAt: minutesAgo(2),
+      recentDomains: ["netflix.com", "samsungcloud.com", "youtube.com"],
+      recentQueries: [
+        { queriedAt: minutesAgo(2), domain: "netflix.com", type: "A", result: "allowed" },
+        { queriedAt: minutesAgo(4), domain: "ipv6_1-cxl0-c098.1.oca.nflxvideo.net", type: "AAAA", result: "allowed" },
+        { queriedAt: minutesAgo(6), domain: "ads.samsungads.com", type: "A", result: "blocked" },
+        { queriedAt: minutesAgo(8), domain: "samsungcloud.com", type: "A", result: "allowed" },
+        { queriedAt: minutesAgo(11), domain: "youtube.com", type: "AAAA", result: "allowed" }
+      ]
+    }
   },
   {
     id: "lara-iphone",
@@ -263,6 +289,7 @@ export const demoSnapshot = (): DashboardSnapshot => {
         dnsmasq: { ok: true, checkedAt: capturedAt },
         neighbors: { ok: true, checkedAt: capturedAt },
         nftables: { ok: true, checkedAt: capturedAt },
+        pihole: { ok: true, checkedAt: capturedAt },
         sqlite: { ok: true, checkedAt: capturedAt }
       }
     }
@@ -270,6 +297,10 @@ export const demoSnapshot = (): DashboardSnapshot => {
 };
 
 export const updateDemoAlias = (snapshot: DashboardSnapshot, mac: string, alias: string): DashboardSnapshot => {
+  return updateDemoSettings(snapshot, mac, alias, "auto");
+};
+
+export const updateDemoSettings = (snapshot: DashboardSnapshot, mac: string, alias: string, icon: DeviceIcon): DashboardSnapshot => {
   const normalized = mac.toLowerCase();
   const nextDevices = snapshot.devices.devices.map((device) => {
     if (device.mac?.toLowerCase() !== normalized) return device;
@@ -277,6 +308,7 @@ export const updateDemoAlias = (snapshot: DashboardSnapshot, mac: string, alias:
     return {
       ...device,
       alias: nextAlias,
+      icon: icon === "auto" ? undefined : icon,
       displayName: nextAlias ?? device.hostname ?? device.mac ?? device.ip ?? device.displayName
     };
   });

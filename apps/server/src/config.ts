@@ -6,6 +6,7 @@ export type AppConfig = {
   wanInterface: string;
   lanInterface: string;
   leaseFile: string;
+  piHoleDatabasePath: string;
   databasePath: string;
   pollCountersMs: number;
   pollDevicesMs: number;
@@ -26,6 +27,7 @@ export const loadConfig = (): AppConfig => ({
   wanInterface: process.env.WAN_INTERFACE ?? "eth0",
   lanInterface: process.env.LAN_INTERFACE ?? "eth1",
   leaseFile: process.env.LEASE_FILE ?? "/var/lib/misc/dnsmasq.leases",
+  piHoleDatabasePath: process.env.PIHOLE_DB_PATH ?? "/etc/pihole/pihole-FTL.db",
   databasePath: process.env.DATABASE_PATH ?? "/var/lib/pi-dashboard/pi-dashboard.sqlite",
   pollCountersMs: numberFromEnv("POLL_COUNTERS_MS", 1000),
   pollDevicesMs: numberFromEnv("POLL_DEVICES_MS", 10000),

@@ -1,36 +1,48 @@
 import {
   Activity,
   AlertCircle,
+  Bot,
+  Camera,
   Database,
   Download,
   FileDown,
+  Gamepad2,
   Globe2,
   Laptop,
+  Lightbulb,
   Monitor,
   Moon,
   PieChart,
+  Printer,
   RefreshCw,
+  Router,
   Search,
   Server,
   Smartphone,
   Speaker,
   Sun,
+  Tablet,
+  Tv,
   Upload,
   Users,
   Wifi,
   X
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { DashboardSnapshot, Device } from "@pi-dashboard/shared";
-import { fetchSnapshot, setDeviceAlias } from "./api.js";
-import { demoSnapshot, updateDemoAlias } from "./demoData.js";
+import type { DashboardSnapshot, Device, DeviceIcon } from "@pi-dashboard/shared";
+import { fetchSnapshot, setDeviceSettings } from "./api.js";
+import { demoSnapshot, updateDemoSettings } from "./demoData.js";
 import { formatBytes, formatDateTime, formatRate, formatTime } from "./format.js";
 
 type Filter = "all" | "online" | "offline";
 type DataMode = "live" | "demo";
 type ThemeMode = "dark" | "light";
 type SortDirection = "asc" | "desc";
-type SortKey = "status" | "device" | "vendor" | "ip" | "mac" | "down" | "up" | "total" | "lastSeen" | "interface";
+type SortKey = "status" | "device" | "vendor" | "ip" | "mac" | "down" | "up" | "total" | "dns" | "lastSeen" | "interface";
+type SaveNotice = {
+  deviceName: string;
+  changes: string[];
+};
 
 const tableColumns: Array<{ key: SortKey; label: string }> = [
   { key: "status", label: "Status" },
@@ -41,8 +53,28 @@ const tableColumns: Array<{ key: SortKey; label: string }> = [
   { key: "down", label: "Down" },
   { key: "up", label: "Up" },
   { key: "total", label: "Total today" },
+  { key: "dns", label: "Pi-hole" },
   { key: "lastSeen", label: "Last seen" },
   { key: "interface", label: "Interface" }
+];
+
+const iconOptions: Array<{ value: DeviceIcon; label: string }> = [
+  { value: "auto", label: "Auto" },
+  { value: "desktop", label: "Desktop" },
+  { value: "laptop", label: "Laptop" },
+  { value: "phone", label: "Phone" },
+  { value: "tablet", label: "Tablet" },
+  { value: "tv", label: "TV" },
+  { value: "server", label: "Server" },
+  { value: "storage", label: "Storage" },
+  { value: "router", label: "Router" },
+  { value: "wifi", label: "Wi-Fi" },
+  { value: "speaker", label: "Speaker" },
+  { value: "game", label: "Game" },
+  { value: "camera", label: "Camera" },
+  { value: "printer", label: "Printer" },
+  { value: "light", label: "Light" },
+  { value: "vacuum", label: "Robot vacuum" }
 ];
 
 const emptySnapshot: DashboardSnapshot = {
@@ -69,6 +101,7 @@ const emptySnapshot: DashboardSnapshot = {
       dnsmasq: { ok: false, checkedAt: new Date(0).toISOString() },
       neighbors: { ok: false, checkedAt: new Date(0).toISOString() },
       nftables: { ok: false, checkedAt: new Date(0).toISOString() },
+      pihole: { ok: false, checkedAt: new Date(0).toISOString() },
       sqlite: { ok: false, checkedAt: new Date(0).toISOString() }
     }
   }
@@ -81,10 +114,13 @@ export function App() {
   const [selected, setSelected] = useState<Device | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newDevice, setNewDevice] = useState<Device | null>(null);
+  const [saveNotice, setSaveNotice] = useState<SaveNotice | null>(null);
+  const [dnsLogDevice, setDnsLogDevice] = useState<Device | null>(null);
   const [dataMode, setDataMode] = useState<DataMode>("live");
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
   const seenDevices = useRef(new Set<string>());
+  const saveNoticeTimer = useRef<number | null>(null);
 
   const refresh = async () => {
     try {
@@ -98,6 +134,7 @@ export function App() {
   const updateSnapshot = (next: DashboardSnapshot) => {
     setSnapshot(next);
     setSelected((current) => (current ? next.devices.devices.find((device) => device.id === current.id) ?? current : null));
+    setDnsLogDevice((current) => (current ? next.devices.devices.find((device) => device.id === current.id) ?? current : null));
     const known = seenDevices.current;
     const hadKnownDevices = known.size > 0;
     const arrived = next.devices.devices.find((device) => device.status === "online" && !known.has(device.id));
@@ -124,6 +161,12 @@ export function App() {
     return () => events.close();
   }, [dataMode]);
 
+  useEffect(() => {
+    return () => {
+      if (saveNoticeTimer.current) window.clearTimeout(saveNoticeTimer.current);
+    };
+  }, []);
+
   const devices = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const filtered = snapshot.devices.devices.filter((device) => {
@@ -146,6 +189,12 @@ export function App() {
       key,
       direction: current?.key === key && current.direction === "asc" ? "desc" : "asc"
     }));
+  };
+
+  const showSaveNotice = (notice: SaveNotice) => {
+    setSaveNotice(notice);
+    if (saveNoticeTimer.current) window.clearTimeout(saveNoticeTimer.current);
+    saveNoticeTimer.current = window.setTimeout(() => setSaveNotice(null), 7000);
   };
 
   return (
@@ -189,6 +238,23 @@ export function App() {
           <section className="notice">
             <AlertCircle size={17} />
             New device online: <strong>{newDevice.displayName}</strong>
+          </section>
+        )}
+
+        {saveNotice && (
+          <section className="settings-toast" role="status" aria-live="polite">
+            <div>
+              <strong>Device settings saved</strong>
+              <span>{saveNotice.deviceName}</span>
+            </div>
+            <ul>
+              {saveNotice.changes.map((change) => (
+                <li key={change}>{change}</li>
+              ))}
+            </ul>
+            <button className="toast-close" onClick={() => setSaveNotice(null)} title="Dismiss saved changes" aria-label="Dismiss saved changes">
+              <X size={15} />
+            </button>
           </section>
         )}
 
@@ -300,6 +366,21 @@ export function App() {
                     <td>{formatOneDecimalGb(device.rxTodayBytes)} GB</td>
                     <td>{formatOneDecimalGb(device.txTodayBytes)} GB</td>
                     <td>{formatOneDecimalGb(device.rxTodayBytes + device.txTodayBytes)} GB</td>
+                    <td>
+                      <button
+                        aria-label={device.dns ? `Show Pi-hole logs for ${device.displayName}` : `No Pi-hole data for ${device.displayName}`}
+                        className="dns-log-button"
+                        disabled={!device.dns}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setDnsLogDevice(device);
+                        }}
+                        title={device.dns ? `Show Pi-hole logs for ${device.displayName}` : "No Pi-hole data for this device"}
+                        type="button"
+                      >
+                        {device.dns ? "Logs" : "No data"}
+                      </button>
+                    </td>
                     <td>{formatTime(device.lastSeenAt)}</td>
                     <td>{device.interface ?? "Unknown"}</td>
                   </tr>
@@ -315,8 +396,10 @@ export function App() {
         <DeviceDrawer
           device={selected}
           onClose={() => setSelected(null)}
-          onAliasSaved={(next) => {
+          onSettingsSaved={(next, notice) => {
             updateSnapshot(next);
+            setSelected(null);
+            showSaveNotice(notice);
             setError(null);
           }}
           onError={setError}
@@ -324,6 +407,8 @@ export function App() {
           snapshot={snapshot}
         />
       )}
+
+      {dnsLogDevice && <PiHoleLogDialog device={dnsLogDevice} onClose={() => setDnsLogDevice(null)} />}
 
     </main>
   );
@@ -392,36 +477,58 @@ function Bars({ values }: { values: number[] }) {
 }
 
 function DeviceGlyph({ device }: { device: Device }) {
-  const name = device.displayName.toLowerCase();
-  let Icon = Monitor;
-  let kind = "monitor";
-  if (name.includes("nas") || name.includes("storage")) {
-    Icon = Database;
-    kind = "storage";
-  } else if (name.includes("iphone") || name.includes("phone")) {
-    Icon = Smartphone;
-    kind = "phone";
-  } else if (name.includes("ipad") || name.includes("laptop")) {
-    Icon = Laptop;
-    kind = "laptop";
-  } else if (name.includes("ap") || name.includes("wifi")) {
-    Icon = Wifi;
-    kind = "wifi";
-  } else if (name.includes("speaker")) {
-    Icon = Speaker;
-    kind = "speaker";
-  } else if (name.includes("gateway") || name.includes("router") || name.includes("internet")) {
-    Icon = Globe2;
-    kind = "gateway";
-  } else if (name.includes("pc")) {
-    Icon = Server;
-    kind = "pc";
-  }
+  const { Icon, kind } = iconForDevice(device);
   return (
     <span className={`device-glyph ${kind}`} aria-hidden="true">
       <Icon size={22} strokeWidth={1.75} />
     </span>
   );
+}
+
+function iconForDevice(device: Device) {
+  if (device.icon && device.icon !== "auto") return iconForKey(device.icon);
+
+  const name = device.displayName.toLowerCase();
+  if (name.includes("nas") || name.includes("storage")) {
+    return iconForKey("storage");
+  } else if (name.includes("iphone") || name.includes("phone")) {
+    return iconForKey("phone");
+  } else if (name.includes("ipad") || name.includes("tablet")) {
+    return iconForKey("tablet");
+  } else if (name.includes("laptop")) {
+    return iconForKey("laptop");
+  } else if (name.includes("tv")) {
+    return iconForKey("tv");
+  } else if (name.includes("ap") || name.includes("wifi")) {
+    return iconForKey("wifi");
+  } else if (name.includes("speaker")) {
+    return iconForKey("speaker");
+  } else if (name.includes("vacuum") || name.includes("roomba")) {
+    return iconForKey("vacuum");
+  } else if (name.includes("gateway") || name.includes("router") || name.includes("internet")) {
+    return iconForKey("router");
+  } else if (name.includes("pc")) {
+    return iconForKey("server");
+  }
+  return iconForKey("desktop");
+}
+
+function iconForKey(icon: DeviceIcon) {
+  if (icon === "laptop") return { Icon: Laptop, kind: "laptop" };
+  if (icon === "phone") return { Icon: Smartphone, kind: "phone" };
+  if (icon === "tablet") return { Icon: Tablet, kind: "tablet" };
+  if (icon === "tv") return { Icon: Tv, kind: "tv" };
+  if (icon === "server") return { Icon: Server, kind: "server" };
+  if (icon === "storage") return { Icon: Database, kind: "storage" };
+  if (icon === "router") return { Icon: Router, kind: "router" };
+  if (icon === "wifi") return { Icon: Wifi, kind: "wifi" };
+  if (icon === "speaker") return { Icon: Speaker, kind: "speaker" };
+  if (icon === "game") return { Icon: Gamepad2, kind: "game" };
+  if (icon === "camera") return { Icon: Camera, kind: "camera" };
+  if (icon === "printer") return { Icon: Printer, kind: "printer" };
+  if (icon === "light") return { Icon: Lightbulb, kind: "light" };
+  if (icon === "vacuum") return { Icon: Bot, kind: "vacuum" };
+  return { Icon: Monitor, kind: "desktop" };
 }
 
 function ratePoints(devices: Device[], key: "rxRateBps" | "txRateBps") {
@@ -458,6 +565,7 @@ function sortValue(device: Device, key: SortKey) {
   if (key === "down") return device.rxTodayBytes;
   if (key === "up") return device.txTodayBytes;
   if (key === "total") return device.rxTodayBytes + device.txTodayBytes;
+  if (key === "dns") return device.dns?.queriesToday ?? -1;
   if (key === "lastSeen") return device.lastSeenAt ? new Date(device.lastSeenAt).getTime() : 0;
   return device.interface ?? "";
 }
@@ -485,27 +593,33 @@ function formatOneDecimalGb(bytes: number) {
 function DeviceDrawer({
   device,
   onClose,
-  onAliasSaved,
+  onSettingsSaved,
   onError,
   dataMode,
   snapshot
 }: {
   device: Device;
   onClose: () => void;
-  onAliasSaved: (snapshot: DashboardSnapshot) => void;
+  onSettingsSaved: (snapshot: DashboardSnapshot, notice: SaveNotice) => void;
   onError: (message: string) => void;
   dataMode: DataMode;
   snapshot: DashboardSnapshot;
 }) {
   const [alias, setAlias] = useState(device.alias ?? "");
+  const [icon, setIcon] = useState<DeviceIcon>(device.icon ?? "auto");
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const currentIconOption = iconOptions.find((option) => option.value === icon) ?? iconOptions[0];
+  const { Icon: CurrentIcon } = iconForKey(currentIconOption.value);
 
-  const saveAlias = async () => {
+  const saveSettings = async () => {
     if (!device.mac) return;
     if (device.sources.length === 0) return;
+    const savedAlias = alias.trim();
+    const notice = buildSaveNotice(device, savedAlias, icon);
     setSaving(true);
     try {
-      onAliasSaved(dataMode === "demo" ? updateDemoAlias(snapshot, device.mac, alias) : await setDeviceAlias(device.mac, alias));
+      onSettingsSaved(dataMode === "demo" ? updateDemoSettings(snapshot, device.mac, savedAlias, icon) : await setDeviceSettings(device.mac, savedAlias, icon), notice);
     } catch (error) {
       onError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -531,9 +645,48 @@ function DeviceDrawer({
           <dd>
             <div className="alias-editor">
               <input value={alias} onChange={(event) => setAlias(event.target.value)} placeholder="Add nickname" disabled={!device.mac} />
-              <button onClick={() => void saveAlias()} disabled={!device.mac || saving}>
+              <button onClick={() => void saveSettings()} disabled={!device.mac || saving}>
                 Save
               </button>
+            </div>
+          </dd>
+          <dt>Icon</dt>
+          <dd>
+            <div className="icon-editor">
+              <button
+                aria-expanded={iconPickerOpen}
+                aria-label="Change icon"
+                className="icon-current"
+                disabled={!device.mac || saving}
+                onClick={() => setIconPickerOpen((current) => !current)}
+                title={`Change icon: ${currentIconOption.label}`}
+                type="button"
+              >
+                <CurrentIcon size={18} />
+                <span>{currentIconOption.label}</span>
+              </button>
+              {iconPickerOpen ? (
+                <div className="icon-picker" role="radiogroup" aria-label="Device icon">
+                  {iconOptions.map((option) => {
+                    const { Icon } = iconForKey(option.value);
+                    return (
+                      <button
+                        aria-checked={icon === option.value}
+                        aria-label={option.label}
+                        className={icon === option.value ? "active" : ""}
+                        disabled={!device.mac || saving}
+                        key={option.value}
+                        onClick={() => setIcon(option.value)}
+                        role="radio"
+                        title={option.label}
+                        type="button"
+                      >
+                        <Icon size={18} />
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
           </dd>
           <Detail label="IP address" value={device.ip} />
@@ -545,12 +698,123 @@ function DeviceDrawer({
           <Detail label="Upload rate" value={formatRate(device.txRateBps)} />
           <Detail label="Downloaded today" value={formatBytes(device.rxTodayBytes)} />
           <Detail label="Uploaded today" value={formatBytes(device.txTodayBytes)} />
+          <Detail label="DNS queries today" value={device.dns ? `${device.dns.queriesToday}` : undefined} />
+          <Detail label="Blocked today" value={device.dns ? `${device.dns.blockedToday}` : undefined} />
+          <Detail label="Last DNS query" value={formatDateTime(device.dns?.lastQueryAt)} />
+          <Detail label="Recent domains" value={device.dns?.recentDomains.join(", ")} />
           <Detail label="Last seen" value={formatDateTime(device.lastSeenAt)} />
           <Detail label="Lease expires" value={formatDateTime(device.leaseExpiresAt)} />
           <Detail label="Sources" value={device.sources.join(", ")} />
         </dl>
       </div>
     </aside>
+  );
+}
+
+function buildSaveNotice(device: Device, alias: string, icon: DeviceIcon): SaveNotice {
+  const originalAlias = device.alias ?? "";
+  const originalIcon = device.icon ?? "auto";
+  const trimmedAlias = alias.trim();
+  const currentIconLabel = labelForIcon(icon);
+  const changes: string[] = [];
+
+  if (trimmedAlias !== originalAlias) {
+    changes.push(`Nickname: ${trimmedAlias || "cleared"}`);
+  }
+  if (icon !== originalIcon) {
+    changes.push(`Icon: ${currentIconLabel}`);
+  }
+
+  return {
+    deviceName: trimmedAlias || device.displayName,
+    changes: changes.length > 0 ? changes : [`Nickname: ${trimmedAlias || device.displayName}`, `Icon: ${currentIconLabel}`]
+  };
+}
+
+function labelForIcon(icon: DeviceIcon) {
+  return iconOptions.find((option) => option.value === icon)?.label ?? "Auto";
+}
+
+function PiHoleLogDialog({ device, onClose }: { device: Device; onClose: () => void }) {
+  const dns = device.dns;
+  const recentQueries = dns?.recentQueries ?? [];
+
+  return (
+    <section className="modal-backdrop" aria-label="Pi-hole log overlay" onClick={onClose}>
+      <article className="log-dialog" role="dialog" aria-modal="true" aria-labelledby="pihole-log-title" onClick={(event) => event.stopPropagation()}>
+        <button className="square-button close log-close" onClick={onClose} title="Close Pi-hole log" aria-label="Close Pi-hole log">
+          <X size={18} />
+        </button>
+        <div className="log-dialog-title">
+          <Database size={21} />
+          <div>
+            <h2 id="pihole-log-title">Pi-hole log</h2>
+            <p>{device.displayName}</p>
+          </div>
+        </div>
+
+        {dns ? (
+          <>
+            <div className="log-stats">
+              <span>
+                <strong>{dns.queriesToday}</strong>
+                Queries today
+              </span>
+              <span>
+                <strong>{dns.blockedToday}</strong>
+                Blocked today
+              </span>
+              <span>
+                <strong>{formatDateTime(dns.lastQueryAt) ?? "No queries"}</strong>
+                Last query
+              </span>
+            </div>
+            <div className="domain-log">
+              <h3>Recent queries</h3>
+              {recentQueries.length > 0 ? (
+                <div className="query-log-wrap">
+                  <table className="query-log-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Result</th>
+                        <th>Domain</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentQueries.map((query, index) => (
+                        <tr key={`${query.queriedAt}-${query.domain}-${index}`}>
+                          <td>{formatTime(query.queriedAt)}</td>
+                          <td>{query.type}</td>
+                          <td>
+                            <span className={`result-chip ${query.result}`}>{capitalize(query.result)}</span>
+                          </td>
+                          <td>{query.domain}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : dns.recentDomains.length > 0 ? (
+                <ul>
+                  {dns.recentDomains.map((domain) => (
+                    <li key={domain}>
+                      <Globe2 size={15} />
+                      <span>{domain}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No recent queries captured for this device.</p>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="muted">No Pi-hole log data has been captured for this device yet.</p>
+        )}
+      </article>
+    </section>
   );
 }
 

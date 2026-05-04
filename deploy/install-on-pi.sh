@@ -8,6 +8,7 @@ WAN_INTERFACE="${WAN_INTERFACE:-eth0}"
 LAN_INTERFACE="${LAN_INTERFACE:-eth1}"
 PORT="${PORT:-8080}"
 LEASE_FILE="${LEASE_FILE:-/var/lib/misc/dnsmasq.leases}"
+PIHOLE_DB_PATH="${PIHOLE_DB_PATH:-/etc/pihole/pihole-FTL.db}"
 REPO_URL="${REPO_URL:-}"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -76,6 +77,7 @@ PORT=${PORT}
 WAN_INTERFACE=${WAN_INTERFACE}
 LAN_INTERFACE=${LAN_INTERFACE}
 LEASE_FILE=${LEASE_FILE}
+PIHOLE_DB_PATH=${PIHOLE_DB_PATH}
 DATABASE_PATH=${DATA_DIR}/pi-dashboard.sqlite
 POLL_COUNTERS_MS=1000
 POLL_DEVICES_MS=10000
@@ -87,6 +89,16 @@ if [[ -f "${LEASE_FILE}" ]]; then
   setfacl -m "u:${SERVICE_USER}:r" "${LEASE_FILE}" || true
 else
   echo "Lease file not found yet at ${LEASE_FILE}; continuing."
+fi
+
+if [[ -f "${PIHOLE_DB_PATH}" ]]; then
+  echo "Granting Pi-hole database read access..."
+  setfacl -m "u:${SERVICE_USER}:x" "$(dirname "${PIHOLE_DB_PATH}")" || true
+  for PIHOLE_FILE in "${PIHOLE_DB_PATH}" "${PIHOLE_DB_PATH}-wal" "${PIHOLE_DB_PATH}-shm"; do
+    [[ -f "${PIHOLE_FILE}" ]] && setfacl -m "u:${SERVICE_USER}:r" "${PIHOLE_FILE}" || true
+  done
+else
+  echo "Pi-hole database not found yet at ${PIHOLE_DB_PATH}; continuing."
 fi
 
 echo "Installing nftables accounting table..."

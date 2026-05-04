@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
-import type { AliasRequest } from "@pi-dashboard/shared";
+import type { AliasRequest, DeviceSettingsRequest } from "@pi-dashboard/shared";
 import { loadConfig } from "./config.js";
 import { Collector } from "./collector.js";
 import { DashboardDb } from "./db.js";
@@ -28,6 +28,10 @@ server.get("/api/export/devices.csv", async (_request, reply) => {
 
 server.put<{ Params: { mac: string }; Body: AliasRequest }>("/api/devices/:mac/alias", async (request) => {
   return collector.setAlias(request.params.mac, request.body.alias);
+});
+
+server.put<{ Params: { mac: string }; Body: DeviceSettingsRequest }>("/api/devices/:mac/settings", async (request) => {
+  return collector.setDeviceSettings(request.params.mac, request.body);
 });
 
 server.get("/events", async (request, reply) => {

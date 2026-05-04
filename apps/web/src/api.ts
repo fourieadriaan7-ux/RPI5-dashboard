@@ -1,4 +1,4 @@
-import type { DashboardSnapshot, DeviceListResponse, HealthResponse, SummaryResponse } from "@pi-dashboard/shared";
+import type { DashboardSnapshot, DeviceIcon, DeviceListResponse, HealthResponse, SummaryResponse } from "@pi-dashboard/shared";
 
 const getJson = async <T>(url: string): Promise<T> => {
   const response = await fetch(url);
@@ -20,6 +20,16 @@ export const setDeviceAlias = async (mac: string, alias: string): Promise<Dashbo
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ alias })
+  });
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.json() as Promise<DashboardSnapshot>;
+};
+
+export const setDeviceSettings = async (mac: string, alias: string, icon: DeviceIcon): Promise<DashboardSnapshot> => {
+  const response = await fetch(`/api/devices/${encodeURIComponent(mac)}/settings`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ alias, icon })
   });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
   return response.json() as Promise<DashboardSnapshot>;
