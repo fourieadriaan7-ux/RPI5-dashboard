@@ -1,11 +1,44 @@
-export type SourceName = "dnsmasq" | "neigh" | "nft";
+export type SourceName = "dnsmasq" | "neigh" | "nft" | "router";
 
 export type DeviceStatus = "online" | "offline" | "unknown";
+
+export type DeviceIcon =
+  | "auto"
+  | "desktop"
+  | "laptop"
+  | "phone"
+  | "tablet"
+  | "tv"
+  | "server"
+  | "storage"
+  | "router"
+  | "wifi"
+  | "speaker"
+  | "game"
+  | "camera"
+  | "printer"
+  | "light"
+  | "vacuum";
 
 export type SourceHealth = {
   ok: boolean;
   checkedAt: string;
   message?: string;
+};
+
+export type DeviceDnsStats = {
+  queriesToday: number;
+  blockedToday: number;
+  lastQueryAt?: string;
+  recentDomains: string[];
+  recentQueries: DeviceDnsQuery[];
+};
+
+export type DeviceDnsQuery = {
+  queriedAt: string;
+  domain: string;
+  type: string;
+  result: "allowed" | "blocked";
 };
 
 export type Device = {
@@ -14,6 +47,7 @@ export type Device = {
   ip?: string;
   hostname?: string;
   alias?: string;
+  icon?: DeviceIcon;
   vendor?: string;
   displayName: string;
   status: DeviceStatus;
@@ -27,6 +61,7 @@ export type Device = {
   txRateBps: number;
   rxTodayBytes: number;
   txTodayBytes: number;
+  dns?: DeviceDnsStats;
 };
 
 export type DeviceListResponse = {
@@ -62,6 +97,7 @@ export type HealthResponse = {
     dnsmasq: SourceHealth;
     nftables: SourceHealth;
     neighbors: SourceHealth;
+    pihole: SourceHealth;
     sqlite: SourceHealth;
   };
 };
@@ -74,4 +110,9 @@ export type DashboardSnapshot = {
 
 export type AliasRequest = {
   alias: string;
+};
+
+export type DeviceSettingsRequest = {
+  alias: string;
+  icon: DeviceIcon;
 };

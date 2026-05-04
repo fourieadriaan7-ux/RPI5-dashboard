@@ -19,6 +19,7 @@ Extra dashboard features:
 - editable device nicknames
 - basic MAC vendor labels
 - top bandwidth users for today
+- Pi-hole per-device DNS query counts and recent query log popup when Pi-hole runs on the Pi
 - CSV export
 - WAN interface status
 - new-device notice when an unseen device appears online
@@ -38,6 +39,7 @@ Extra dashboard features:
 - nftables dynamic sets count forwarded bytes per LAN IP:
   - upload is `eth1 -> eth0`, keyed by source IP
   - download is `eth0 -> eth1`, keyed by destination IP
+- Pi-hole data is read locally from `/etc/pihole/pihole-FTL.db` when Pi-hole is installed on the same Pi. The dashboard reads the local SQLite database directly; it does not use the Pi-hole web API.
 - SQLite stores samples so totals survive dashboard restarts.
 
 ## Development
@@ -125,6 +127,48 @@ Open:
 http://<pi-ip>:8080
 ```
 
+## Optional Pi-hole DNS Logs
+
+The dashboard can show per-device Pi-hole DNS data when Pi-hole runs on the same Raspberry Pi.
+
+Install Pi-hole normally on the Pi if it is not installed yet:
+
+```bash
+curl -sSL https://install.pi-hole.net | bash
+```
+
+During Pi-hole setup, use the Pi LAN interface. If this Pi already uses `dnsmasq` for DHCP, do not enable Pi-hole DHCP unless you plan to migrate DHCP to Pi-hole. The dashboard can keep using your existing `dnsmasq` lease file.
+
+For Pi-hole logs to show per-device traffic, LAN clients must use the Pi as their DNS server. If DHCP is handled by `dnsmasq`, add or confirm a DNS-server option like this, using the Pi LAN IP:
+
+```text
+dhcp-option=option:dns-server,192.168.1.1
+```
+
+Then restart DHCP/DNS:
+
+```bash
+sudo systemctl restart dnsmasq
+```
+
+The dashboard reads Pi-hole's local database from:
+
+```text
+/etc/pihole/pihole-FTL.db
+```
+
+`deploy/install-on-pi.sh` sets `PIHOLE_DB_PATH=/etc/pihole/pihole-FTL.db` and grants the `pi-dashboard` service user read access when that database exists. If you install Pi-hole after installing the dashboard, either rerun the installer or run:
+
+```bash
+sudo setfacl -m u:pi-dashboard:x /etc/pihole
+sudo setfacl -m u:pi-dashboard:r /etc/pihole/pihole-FTL.db
+sudo test -f /etc/pihole/pihole-FTL.db-wal && sudo setfacl -m u:pi-dashboard:r /etc/pihole/pihole-FTL.db-wal
+sudo test -f /etc/pihole/pihole-FTL.db-shm && sudo setfacl -m u:pi-dashboard:r /etc/pihole/pihole-FTL.db-shm
+sudo systemctl restart pi-dashboard
+```
+
+If your Pi-hole database is somewhere else, set `PIHOLE_DB_PATH` in `/etc/pi-dashboard.env` and restart `pi-dashboard`.
+
 ## Persistence Note
 
 `deploy/install-nft-accounting.sh` installs the accounting table immediately. If your Pi does not already restore nftables rules at boot, merge the generated table into `/etc/nftables.conf` or run the script during boot before starting the dashboard.
@@ -139,4 +183,5 @@ ip -j neigh
 cat /var/lib/misc/dnsmasq.leases
 systemctl status pi-dashboard
 journalctl -u pi-dashboard -f
+sudo -u pi-dashboard test -r /etc/pihole/pihole-FTL.db && echo "Pi-hole DB readable"
 ```

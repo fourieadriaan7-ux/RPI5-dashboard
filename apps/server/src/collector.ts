@@ -1,7 +1,9 @@
 import type {
   DashboardSnapshot,
   Device,
+  DeviceIcon,
   DeviceListResponse,
+  DeviceSettingsRequest,
   HealthResponse,
   SummaryResponse
 } from "@pi-dashboard/shared";
@@ -10,6 +12,7 @@ import { DashboardDb } from "./db.js";
 import type { DhcpLease } from "./parsers/dnsmasq.js";
 import type { NeighborEntry } from "./parsers/neigh.js";
 import type { NftCounter } from "./parsers/nft.js";
+import { readPiHoleStats } from "./pihole.js";
 import { readInterfaceStatus, readLeases, readNeighbors, readNftCounters } from "./system.js";
 import { calculateRateBps, type CounterSample } from "./utils/rates.js";
 import { lookupVendor } from "./vendors.js";
@@ -70,6 +73,13 @@ export class Collector {
     message: "not checked yet"
   };
 
+  private pihole: SourceState<Map<string, Device["dns"]>> = {
+    data: new Map(),
+    ok: false,
+    checkedAt: new Date(0),
+    message: "not checked yet"
+  };
+
   private previousRx = new Map<string, CounterSample>();
   private previousTx = new Map<string, CounterSample>();
   private timers: NodeJS.Timeout[] = [];
@@ -84,9 +94,13 @@ export class Collector {
     void this.pollDevices();
     void this.pollCounters();
     void this.pollWan();
+    void this.pollLan();
+    void this.pollPiHole();
     this.timers.push(setInterval(() => void this.pollDevices(), this.config.pollDevicesMs));
     this.timers.push(setInterval(() => void this.pollCounters(), this.config.pollCountersMs));
     this.timers.push(setInterval(() => void this.pollWan(), this.config.pollDevicesMs));
+    this.timers.push(setInterval(() => void this.pollLan(), this.config.pollDevicesMs));
+    this.timers.push(setInterval(() => void this.pollPiHole(), this.config.pollDevicesMs));
   }
 
   stop(): void {
@@ -110,7 +124,16 @@ export class Collector {
   }
 
   setAlias(mac: string, alias: string): DashboardSnapshot {
-    this.db.setAlias(mac, alias);
+    this.db.setDeviceSettings(mac, { alias, icon: "auto" });
+    this.emit();
+    return this.snapshot();
+  }
+
+  setDeviceSettings(mac: string, settings: DeviceSettingsRequest): DashboardSnapshot {
+    this.db.setDeviceSettings(mac, {
+      alias: settings.alias,
+      icon: isDeviceIcon(settings.icon) ? settings.icon : "auto"
+    });
     this.emit();
     return this.snapshot();
   }
@@ -240,7 +263,7 @@ export class Collector {
     const now = new Date();
     const byIp = new Map<string, Partial<Device> & { lease?: DhcpLease; neighbor?: NeighborEntry }>();
     const today = this.db.todayTotals();
-    const aliases = this.db.aliases();
+    const settings = this.db.deviceSettings();
 
     for (const lease of this.leases.data) {
       const existing = byIp.get(lease.ip) ?? {};
@@ -275,14 +298,39 @@ export class Collector {
       });
     }
 
+    for (const ip of this.pihole.data.keys()) {
+      const existing = byIp.get(ip) ?? {};
+      byIp.set(ip, { ...existing, ip });
+    }
+
+    for (const ip of this.cachedLanStatus.addresses) {
+      const existing = byIp.get(ip) ?? {};
+      byIp.set(ip, {
+        ...existing,
+        ip,
+        alias: existing.alias ?? "Internet Gateway",
+        displayName: existing.displayName ?? "Internet Gateway",
+        hostname: existing.hostname ?? "pi-router",
+        icon: existing.icon ?? "router",
+        interface: existing.interface ?? this.config.lanInterface,
+        sources: [...new Set([...(existing.sources ?? []), "router" as const])]
+      });
+    }
+
     const devices = [...byIp.entries()]
       .map(([ip, partial]) => {
         const lastSeen = this.lastSeenFor(ip, partial.neighbor, now);
-        const online = lastSeen ? now.getTime() - lastSeen.getTime() <= this.config.onlineWindowMs : false;
         const totals = today.get(ip) ?? { rx: 0, tx: 0 };
         const sources = partial.sources ?? [];
+        const isRouter = sources.includes("router");
+        const online = isRouter
+          ? this.cachedLanStatus.online
+          : lastSeen
+            ? now.getTime() - lastSeen.getTime() <= this.config.onlineWindowMs
+            : false;
         const mac = partial.mac ?? partial.neighbor?.mac;
-        const alias = mac ? aliases.get(mac.toLowerCase()) : undefined;
+        const deviceSettings = mac ? settings.get(mac.toLowerCase()) : undefined;
+        const alias = deviceSettings?.alias ?? partial.alias;
         const vendor = lookupVendor(mac);
 
         return {
@@ -291,19 +339,21 @@ export class Collector {
           mac,
           hostname: partial.hostname,
           alias,
-          vendor,
-          displayName: alias ?? displayNameFor(partial.lease, mac, ip),
+          icon: deviceSettings?.icon ?? partial.icon,
+          vendor: vendor ?? partial.vendor,
+          displayName: alias ?? partial.displayName ?? displayNameFor(partial.lease, mac, ip),
           status: online ? "online" : sources.length > 0 ? "offline" : "unknown",
           interface: partial.interface ?? partial.neighbor?.dev,
           leaseExpiresAt: partial.lease?.expiresAt?.toISOString(),
-          lastSeenAt: lastSeen?.toISOString(),
+          lastSeenAt: (isRouter && this.cachedLanStatus.online ? now : lastSeen)?.toISOString(),
           sources,
           rxBytes: this.nftables.data.rxBytes.get(ip) ?? 0,
           txBytes: this.nftables.data.txBytes.get(ip) ?? 0,
           rxRateBps: this.nftables.data.rxRates.get(ip) ?? 0,
           txRateBps: this.nftables.data.txRates.get(ip) ?? 0,
           rxTodayBytes: totals.rx,
-          txTodayBytes: totals.tx
+          txTodayBytes: totals.tx,
+          dns: this.pihole.data.get(ip)
         } satisfies Device;
       })
       .sort((a, b) => b.rxRateBps + b.txRateBps - (a.rxRateBps + a.txRateBps));
@@ -362,12 +412,20 @@ export class Collector {
         dnsmasq: this.leases.checkedAt.getTime() === 0 ? emptyHealth(checkedAt) : sourceHealth(this.leases),
         nftables: this.nftables.checkedAt.getTime() === 0 ? emptyHealth(checkedAt) : sourceHealth(this.nftables),
         neighbors: this.neighbors.checkedAt.getTime() === 0 ? emptyHealth(checkedAt) : sourceHealth(this.neighbors),
+        pihole: this.pihole.checkedAt.getTime() === 0 ? emptyHealth(checkedAt) : sourceHealth(this.pihole),
         sqlite
       }
     };
   }
 
   private cachedWanStatus: SummaryResponse["wan"] = {
+    interface: "unknown",
+    online: false,
+    addresses: [],
+    message: "not checked yet"
+  };
+
+  private cachedLanStatus: SummaryResponse["wan"] = {
     interface: "unknown",
     online: false,
     addresses: [],
@@ -386,6 +444,39 @@ export class Collector {
       };
     }
   }
+
+  async pollLan(): Promise<void> {
+    try {
+      this.cachedLanStatus = await readInterfaceStatus(this.config.lanInterface);
+    } catch (error) {
+      this.cachedLanStatus = {
+        interface: this.config.lanInterface,
+        online: false,
+        addresses: [],
+        message: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  async pollPiHole(): Promise<void> {
+    const checkedAt = new Date();
+    try {
+      this.pihole = {
+        data: readPiHoleStats(this.config.piHoleDatabasePath, checkedAt),
+        ok: true,
+        checkedAt
+      };
+    } catch (error) {
+      this.pihole = {
+        ...this.pihole,
+        ok: false,
+        checkedAt,
+        message: error instanceof Error ? error.message : String(error)
+      };
+    } finally {
+      this.emit();
+    }
+  }
 }
 
 const csvCell = (value: unknown): string => {
@@ -393,3 +484,24 @@ const csvCell = (value: unknown): string => {
   if (!/[",\n]/.test(text)) return text;
   return `"${text.replaceAll('"', '""')}"`;
 };
+
+const deviceIcons = new Set<DeviceIcon>([
+  "auto",
+  "desktop",
+  "laptop",
+  "phone",
+  "tablet",
+  "tv",
+  "server",
+  "storage",
+  "router",
+  "wifi",
+  "speaker",
+  "game",
+  "camera",
+  "printer",
+  "light",
+  "vacuum"
+]);
+
+const isDeviceIcon = (value: unknown): value is DeviceIcon => typeof value === "string" && deviceIcons.has(value as DeviceIcon);

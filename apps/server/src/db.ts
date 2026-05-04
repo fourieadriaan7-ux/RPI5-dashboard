@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import type { DeviceIcon } from "@pi-dashboard/shared";
 
 export type TrafficSampleInput = {
   ip: string;
@@ -8,6 +9,11 @@ export type TrafficSampleInput = {
   rawBytes: number;
   deltaBytes: number;
   sampledAt: Date;
+};
+
+export type StoredDeviceSettings = {
+  alias?: string;
+  icon?: DeviceIcon;
 };
 
 export class DashboardDb {
@@ -31,9 +37,18 @@ export class DashboardDb {
       create table if not exists device_aliases (
         mac text primary key,
         alias text not null,
+        icon text,
         updated_at text not null
       );
     `);
+    this.ensureDeviceSettingsColumns();
+  }
+
+  private ensureDeviceSettingsColumns(): void {
+    const columns = this.db.prepare("pragma table_info(device_aliases)").all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === "icon")) {
+      this.db.prepare("alter table device_aliases add column icon text").run();
+    }
   }
 
   insertTrafficSamples(samples: TrafficSampleInput[]): void {
@@ -87,21 +102,43 @@ export class DashboardDb {
     return new Map(rows.map((row) => [row.mac.toLowerCase(), row.alias]));
   }
 
+  deviceSettings(): Map<string, StoredDeviceSettings> {
+    const rows = this.db.prepare("select mac, alias, icon from device_aliases").all() as Array<{
+      mac: string;
+      alias: string | null;
+      icon: DeviceIcon | null;
+    }>;
+    return new Map(
+      rows.map((row) => [
+        row.mac.toLowerCase(),
+        {
+          alias: row.alias?.trim() || undefined,
+          icon: row.icon && row.icon !== "auto" ? row.icon : undefined
+        }
+      ])
+    );
+  }
+
   setAlias(mac: string, alias: string): void {
+    this.setDeviceSettings(mac, { alias, icon: "auto" });
+  }
+
+  setDeviceSettings(mac: string, settings: { alias: string; icon: DeviceIcon }): void {
     const normalizedMac = mac.toLowerCase();
-    const trimmed = alias.trim();
-    if (!trimmed) {
+    const trimmed = settings.alias.trim();
+    const icon = settings.icon === "auto" ? null : settings.icon;
+    if (!trimmed && !icon) {
       this.db.prepare("delete from device_aliases where mac = ?").run(normalizedMac);
       return;
     }
     this.db
       .prepare(
         `
-          insert into device_aliases (mac, alias, updated_at)
-          values (?, ?, ?)
-          on conflict(mac) do update set alias = excluded.alias, updated_at = excluded.updated_at
+          insert into device_aliases (mac, alias, icon, updated_at)
+          values (?, ?, ?, ?)
+          on conflict(mac) do update set alias = excluded.alias, icon = excluded.icon, updated_at = excluded.updated_at
         `
       )
-      .run(normalizedMac, trimmed.slice(0, 80), new Date().toISOString());
+      .run(normalizedMac, trimmed.slice(0, 80), icon, new Date().toISOString());
   }
 }
