@@ -81,7 +81,6 @@ export function App() {
   const [selected, setSelected] = useState<Device | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newDevice, setNewDevice] = useState<Device | null>(null);
-  const [laraPopup, setLaraPopup] = useState(false);
   const [dataMode, setDataMode] = useState<DataMode>("live");
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
@@ -149,14 +148,8 @@ export function App() {
     }));
   };
 
-  const maybeShowLaraPopup = () => {
-    if (!laraPopup && Math.random() < 0.1) {
-      setLaraPopup(true);
-    }
-  };
-
   return (
-    <main className={`shell ${theme}`} onClickCapture={maybeShowLaraPopup}>
+    <main className={`shell ${theme}`}>
       <div className="dashboard">
         <header className="topbar">
           <div className="brand">
@@ -332,17 +325,6 @@ export function App() {
         />
       )}
 
-      {laraPopup && (
-        <div className="surprise-backdrop" role="dialog" aria-modal="true" aria-label="Surprise message" onClick={() => setLaraPopup(false)}>
-          <div className="surprise-popup" onClick={(event) => event.stopPropagation()}>
-            <button className="square-button surprise-close" onClick={() => setLaraPopup(false)} title="Close">
-              <X size={18} />
-            </button>
-            <strong>Lara is die beste vrou ooit!!!</strong>
-            <small>*Lara het my dit laat doen</small>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
